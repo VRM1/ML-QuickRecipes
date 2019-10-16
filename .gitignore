@@ -1,3 +1,8 @@
 
 .DS_Store
 Doc2Vec_Word2Vec/.ipynb_checkpoints/Doc2Vec_Training-checkpoint.ipynb
+# ignore all .ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# ignore all image folders
+img/
