@@ -5,41 +5,31 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, log_loss
 import xgboost as xgb
 import matplotlib as mpl
-import sys, io
-
+import time
 
 import mlflow
 import mlflow.xgboost
+from mlflow.tracking import MlflowClient
 
 mpl.use("Agg")
 
-class DisplayLossCurve(object):
-  def __init__(self, print_loss=False):
-    self.print_loss = print_loss
+class Plotting(xgb.callback.TrainingCallback):
 
-  """Make sure the model verbose is set to 1"""
-  def __enter__(self):
-    self.old_stdout = sys.stdout
-    sys.stdout = self.mystdout = io.StringIO()
-  
-  def __exit__(self, *args, **kwargs):
-    sys.stdout = self.old_stdout
-    loss_history = self.mystdout.getvalue()
-    loss_list = []
-    for line in loss_history.split('\n'):
-      if(len(line.split("train-mlogloss: ")) == 1):
-        continue
-      loss_list.append(float(line.split("train-mlogloss: ")[-1]))
-    for i,l in enumerate(loss_list):
-        mlflow.log_metric(key="quality", value=l, step=i)
+    def __init__(self, rounds):
 
-    # if self.print_loss:
-    #   print("=============== Loss Array ===============")
-    #   print(np.array(loss_list))
-      
-    return True
+        self.rounds = rounds
+
+    def after_iteration(self, model, epoch, evals_log):
+
+        for data, metric in evals_log.items():
+            for metric_name, log in metric.items():        
+                mlflow.log_metric(key="vin_"+metric_name, value=log[epoch], step=epoch)
+        time.sleep(2)
+        return False
+
 
 def parse_args():
+    
     parser = argparse.ArgumentParser(description="XGBoost example")
     parser.add_argument(
         "--learning-rate",
@@ -63,6 +53,12 @@ def parse_args():
 
 
 def main():
+
+    client = MlflowClient()
+    try:
+        experiment_id = client.create_experiment("XGboost")
+    except:
+        experiment_id = client.get_experiment_by_name("XGboost").experiment_id
     # parse command-line arguments
     args = parse_args()
 
@@ -70,15 +66,16 @@ def main():
     iris = datasets.load_iris()
     X = iris.data
     y = iris.target
+    num_boost_round = 100
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
+    plotting = Plotting(num_boost_round)
     # enable auto logging
     mlflow.xgboost.autolog()
 
     dtrain = xgb.DMatrix(X_train, label=y_train)
     dtest = xgb.DMatrix(X_test, label=y_test)
 
-    with mlflow.start_run():
+    with mlflow.start_run(experiment_id=experiment_id):
 
         # train model
         params = {
@@ -90,8 +87,9 @@ def main():
             "subsample": args.subsample,
             "seed": 42,
         }
-        with DisplayLossCurve():
-            model = xgb.train(params, dtrain, evals=[(dtrain, "train")])
+        
+        model = xgb.train(params, dtrain, evals=[(dtrain, "train")],\
+             num_boost_round=num_boost_round, callbacks=[plotting])
 
         # evaluate model
         y_proba = model.predict(dtest)
