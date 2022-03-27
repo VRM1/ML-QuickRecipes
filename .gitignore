@@ -5,3 +5,4 @@
 
 # ignore all image folders
 img/
+*mlruns
