@@ -6,3 +6,5 @@
 # ignore all image folders
 img/
 *mlruns
+dask-worker-space*
+*.db
